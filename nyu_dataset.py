@@ -20,7 +20,7 @@ class SegmentationTransform(object):
     def __call__(self, image, segmentation):
 
         if self.train_trainsforms:
-            image = self.resize(image)
+            image = self.resize(transforms.transforms.ToPILImage()(image))
             segmentation = scipy.misc.imresize(segmentation, (286, 286), 'nearest')
 
             # mirroring
@@ -47,7 +47,7 @@ class SegmentationTransform(object):
 
 
 class SegmentationDataset(Dataset):
-    def __init__(self, path_to_datafolder='./datasets/nyu/train/', transforms=None, val=False):
+    def __init__(self, path_to_datafolder='./datasets/nyu/train/', transforms=None):
         if transforms:
             self.transforms = transforms
         else:
