@@ -55,7 +55,7 @@ class UpModule(nn.Module):
         if relu:
             modules.append(nn.ReLU(inplace=True))
         else:
-            modules.append(nn.Tanh())
+            modules.append(nn.Sigmoid())
 
         self.net = nn.Sequential(*modules)
 

@@ -36,7 +36,7 @@ class SegmentationTransform(object):
             segmentation = segmentation[x_offset: x_offset + 256, y_offset: y_offset + 256]
 
         else:
-            image = self.resize(image)
+            image = self.resize(transforms.transforms.ToPILImage()(image))
             segmentation = scipy.misc.imresize(segmentation, (256, 256), 'nearest')
 
         image_tensor = self.to_tensor(image)
