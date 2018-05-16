@@ -1,6 +1,7 @@
 import h5py
 import scipy.misc
 import numpy as np
+import scipy.io
 
 
 def preprocess_nyu_dataset(path_to_data='./nyu_depth_v2_labeled.mat',
