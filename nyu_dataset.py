@@ -40,6 +40,7 @@ class SegmentationTransform(object):
             segmentation = scipy.misc.imresize(segmentation, (256, 256), 'nearest')
 
         image_tensor = self.to_tensor(image)
+        image_tensor = transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))(image_tensor)
         segmentation_tensor = (np.arange(self.num_classes) == segmentation[..., None] - 1).astype(int)
         segmentation_tensor = np.rollaxis(segmentation_tensor, -1, 0)
         segmentation_tensor = torch.FloatTensor(segmentation_tensor)
