@@ -6,7 +6,7 @@ class DownModule(nn.Module):
     """
     Class for downsample module of the generator.
     """
-    def __init__(self, in_channels, out_channels, batch_norm=True, stride=2, relu=True):
+    def __init__(self, in_channels, out_channels, batch_norm=True, stride=2, relu=True, instance_norm=False):
         """
         Initialize down module and modules weights
         :param in_channels: number of input channels
@@ -18,6 +18,9 @@ class DownModule(nn.Module):
                              kernel_size=4, stride=stride, padding=1, bias=False)]
         if batch_norm:
             modules.append(nn.BatchNorm2d(num_features=out_channels))
+            
+        if instance_norm:
+            modules.append(nn.InstanceNorm2d(num_features=out_channels, affine=False))
 
         if relu:
             modules.append(nn.LeakyReLU(negative_slope=0.2, inplace=True))
@@ -43,19 +46,21 @@ class UpModule(nn.Module):
     """
     Class for upsampling module in the generator.
     """
-    def __init__(self, in_channels, out_channels, dropout=True, batch_norm=True, relu=True):
+    def __init__(self, in_channels, out_channels, dropout=True, batch_norm=True, relu=True, instance_norm=False):
         super(UpModule, self).__init__()
         modules = [nn.ConvTranspose2d(in_channels=in_channels, out_channels=out_channels,
                                       kernel_size=4, stride=2, padding=1, bias=False)]
         if batch_norm:
             modules.append(nn.BatchNorm2d(num_features=out_channels))
+        if instance_norm:
+            modules.append(nn.InstanceNorm2d(num_features=out_channels, affine=False))
         if dropout:
             modules.append(nn.Dropout2d(p=0.5, inplace=True))
 
         if relu:
             modules.append(nn.ReLU(inplace=True))
         else:
-            modules.append(nn.Sigmoid())
+            modules.append(nn.Tanh())
 
         self.net = nn.Sequential(*modules)
 
@@ -104,12 +109,17 @@ class Generator(nn.Module):
     """
     pix2pix generator.
     """
-    def __init__(self, in_channels, out_channels):
+    def __init__(self, in_channels, out_channels, instance_norm=False):
         super(Generator, self).__init__()
 
         list_in_channels_encoder = [in_channels, 64, 128, 256, 512, 512, 512, 512]
         list_out_channels_encoder = [64, 128, 256, 512, 512, 512, 512, 512]
         depth = len(list_out_channels_encoder)
+        
+        if instance_norm:
+            batch_norm = False
+        else:
+            batch_norm = True
 
         down_modules = []
 
@@ -118,9 +128,10 @@ class Generator(nn.Module):
                                                                 list_out_channels_encoder):
             if i == 0 or i == depth - 1:
                 down_modules.append(DownModule(current_in_channels, current_out_channels,
-                                               batch_norm=False))
+                                               batch_norm=False, instance_norm=False))
             else:
-                down_modules.append(DownModule(current_in_channels, current_out_channels))
+                down_modules.append(DownModule(current_in_channels, current_out_channels, 
+                                               batch_norm=batch_norm, instance_norm=instance_norm))
 
         self._down_modules = ListModule(*down_modules)
 
@@ -132,13 +143,14 @@ class Generator(nn.Module):
                                                                 list_in_channels_decoder,
                                                                 list_out_channels_decoder):
             if i < 3:
-                up_modules.append(UpModule(current_in_channels, current_out_channels))
+                up_modules.append(UpModule(current_in_channels, current_out_channels, batch_norm=batch_norm, 
+                                           instance_norm=instance_norm))
             elif i == depth - 1:
                 up_modules.append(UpModule(current_in_channels, current_out_channels,
-                                           dropout=False, batch_norm=False, relu=False))
+                                           dropout=False, batch_norm=False, relu=False, instance_norm=False))
             else:
                 up_modules.append(UpModule(current_in_channels, current_out_channels,
-                                           dropout=False))
+                                           dropout=False, batch_norm=batch_norm, instance_norm=instance_norm))
 
         self._up_modules = ListModule(*up_modules)
 
@@ -163,28 +175,34 @@ class Discriminator(nn.Module):
     Discriminator class for pix2pix model
     70x70 discriminator is used.
     """
-    def __init__(self, in_channels):
+    def __init__(self, in_channels, instance_norm=False):
         super(Discriminator, self).__init__()
 
         list_in_channels = [in_channels, 64, 128, 256, 512]
         list_out_channels = [64, 128, 256, 512, 1]
         depth = len(list_out_channels)
+        
+        if instance_norm:
+            batch_norm = False
+        else:
+            batch_norm = True
 
         modules = []
 
         for i, in_channels, out_channels in zip(range(depth), list_in_channels, list_out_channels):
             if i == 0:
-                modules.append(DownModule(in_channels, out_channels, batch_norm=False))
+                modules.append(DownModule(in_channels, out_channels, batch_norm=False, instance_norm=False))
 
             elif i < depth - 2:
-                modules.append(DownModule(in_channels, out_channels))
+                modules.append(DownModule(in_channels, out_channels, batch_norm=batch_norm, instance_norm=instance_norm))
 
             elif i == depth - 2:
-                modules.append(DownModule(in_channels, out_channels, stride=1))
+                modules.append(DownModule(in_channels, out_channels, stride=1, batch_norm=batch_norm, 
+                                          instance_norm=instance_norm))
 
             else:
                 modules.append(DownModule(in_channels, out_channels, stride=1, batch_norm=False,
-                                          relu=False))
+                                          relu=False, instance_norm=False))
 
         self._net = nn.Sequential(*modules)
 
