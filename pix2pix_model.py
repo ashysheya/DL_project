@@ -43,6 +43,8 @@ class DownModule(nn.Module):
         return self.net.forward(x)
 
 
+
+
 class UpModule(nn.Module):
     """
     Class for upsampling module in the generator.
