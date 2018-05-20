@@ -47,6 +47,7 @@ class SegmentationTransform(object):
         return image_tensor, segmentation_tensor
 
 
+
 class SegmentationDataset(Dataset):
     def __init__(self, path_to_datafolder='./datasets/nyu/train/', transforms=None):
         if transforms:
