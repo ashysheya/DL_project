@@ -4,6 +4,19 @@ from pix2pix_model import Discriminator, ListModule
 import numpy as np
 
 
+def initialize_weights(network):
+    for module in network.modules():
+        if isinstance(module, nn.Conv2d):
+            module.weight.data.normal_(0.0, 0.02)
+
+        elif isinstance(module, nn.BatchNorm2d):
+            module.weight.data.normal_(1.0, 0.02)
+            module.bias.data.fill_(0)
+
+        elif isinstance(module, nn.ConvTranspose2d):
+            module.weight.data.normal_(0.0, 0.02)
+
+
 class MultiScaleDiscriminator(nn.Module):
     """
     Class of the whole Discriminating system in pix2pixHD -
@@ -60,16 +73,16 @@ class FeatureEncoder(nn.Module):
             if i == 0:
                 modules += [nn.ReflectionPad2d(3),
                             nn.Conv2d(in_ch, out_ch, kernel_size=7, padding=0),
-                            norm_layer(out_ch), nn.ReLU(True)]
+                            norm_layer(out_ch, affine=False), nn.ReLU(True)]
             elif i == depth-1:
                 modules += [nn.ReflectionPad2d(3),
                             nn.Conv2d(in_ch, out_ch, kernel_size=7, padding=0), nn.Tanh()]
             elif in_ch < out_ch:
                 modules += [nn.Conv2d(in_ch, out_ch, kernel_size=3, stride=2, padding=1),
-                            norm_layer(out_ch), nn.ReLU(True)]
+                            norm_layer(out_ch, affine=False), nn.ReLU(True)]
             elif in_ch > out_ch:
                 modules += [nn.ConvTranspose2d(in_ch, out_ch, kernel_size=3, stride=2, padding=1),
-                            norm_layer(out_ch), nn.ReLU(True)]
+                            norm_layer(out_ch, affine=False), nn.ReLU(True)]
 
         self._net = nn.Sequential(*modules)
         
@@ -87,3 +100,158 @@ class FeatureEncoder(nn.Module):
                 outputs_mean[indices[:, 0], indices[:, 1] + j,
                              indices[:, 2], indices[:, 3]] = mean_features
         return outputs_mean
+
+
+class ResNetBlock(nn.Module):
+    """
+    ResNet Block for Generator.
+    """
+
+    def __init__(self, in_channels, norm_layer):
+        super(ResNetBlock, self).__init__()
+
+        self._resnetblock = nn.Sequential(nn.ReflectionPad2d(1),
+                                          nn.Conv2d(in_channels, in_channels, kernel_size=3,
+                                                    stride=1, padding=0),
+                                          norm_layer(in_channels, affine=False),
+                                          nn.ReLU(inplace=True),
+                                          nn.ReflectionPad2d(1),
+                                          nn.Conv2d(in_channels, in_channels, kernel_size=3,
+                                                    stride=1, padding=0),
+                                          norm_layer(in_channels, affine=False))
+        initialize_weights(self._resnetblock)
+
+    def forward(self, x):
+        return x + self._resnetblock.forward(x)
+
+
+class GlobalGenerator(nn.Module):
+    """
+    Global Generator from pix2pixHD
+    """
+
+    def __init__(self, in_channels, out_channels, instance_norm=True, num_residual_blocks=9):
+        super(GlobalGenerator, self).__init__()
+        if instance_norm:
+            norm_layer = nn.InstanceNorm2d
+        else:
+            norm_layer = nn.BatchNorm2d
+
+        # convolutional front-end
+        front_end = nn.Sequential(nn.ReflectionPad2d(3),
+                                  nn.Conv2d(in_channels, 64, kernel_size=7, stride=1, padding=0),
+                                  norm_layer(64, affine=False),
+                                  nn.ReLU(inplace=True))
+
+
+        # downsampling layers
+        downsampling = []
+
+        in_channels_downsampling = [64, 128, 256, 512]
+        out_channels_downsampling = [128, 256, 512, 1024]
+        depth = len(in_channels_downsampling)
+
+        for i, in_channel, out_channel in zip(range(depth), in_channels_downsampling,
+                                              out_channels_downsampling):
+            downsampling += [nn.Conv2d(in_channel, out_channel, kernel_size=3, stride=2, padding=1),
+                             norm_layer(out_channel, affine=False),
+                             nn.ReLU(inplace=True)]
+
+
+        # resnet blocks
+        resnetblocks = []
+        resnet_channels = out_channels_downsampling[-1]
+
+        for _ in range(num_residual_blocks):
+            resnetblocks += [ResNetBlock(resnet_channels, norm_layer)]
+
+
+        # upsampling layers
+        in_channels_upsampling = [1024, 512, 256, 128]
+        out_channels_upsampling = [512, 256, 128, 64]
+
+        upsampling = []
+
+        for i, in_channel, out_channel in zip(range(depth), in_channels_upsampling,
+                                              out_channels_upsampling):
+            upsampling += [nn.ConvTranspose2d(in_channel, out_channel, kernel_size=3, stride=2,
+                                              padding=1, output_padding=1),
+                           norm_layer(affine=False),
+                           nn.ReLU(inplace=True),
+                           ]
+
+        back_end = [nn.ReflectionPad2d(3),
+                    nn.Conv2d(out_channels_upsampling[-1], out_channels, kernel_size=7, padding=0),
+                    nn.Tanh()]
+
+        self.model = nn.Sequential(*(front_end + downsampling + resnetblocks + upsampling))
+        initialize_weights(self.model)
+        self.last_block = nn.Sequential(*back_end)
+        initialize_weights(self.last_block)
+
+    def forward(self, x):
+        output_model = self.model.forward(x)
+        return self.last_block.forward(output_model)
+
+
+class LocalEnhancer(nn.Module):
+    """
+    Local Enhancer Network in pix2pixHD
+    """
+    def __init__(self, in_channels, out_channels, num_resnet_blocks_enhancer=3,
+                 num_resnet_blocks_global=9, path_to_global_generator_parameters=None,
+                 instance_norm=True):
+        super(LocalEnhancer, self).__init__()
+
+        if instance_norm:
+            norm_layer = nn.InstanceNorm2d
+        else:
+            norm_layer = nn.BatchNorm2d
+
+        self._front_end = nn.Sequential(nn.ReflectionPad2d(3),
+                                        nn.Conv2d(in_channels, 32, kernel_size=7, stride=1,
+                                                  padding=0),
+                                        norm_layer(32, affine=False),
+                                        nn.ReLU(inplace=True),
+                                        nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1),
+                                        norm_layer(64, affine=False),
+                                        nn.ReLU(inplace=True))
+
+        initialize_weights(self._front_end)
+
+        global_generator = GlobalGenerator(in_channels, out_channels, instance_norm=instance_norm,
+                                           num_residual_blocks=num_resnet_blocks_global)
+
+        if path_to_global_generator_parameters:
+            global_generator.load_state_dict(torch.load(path_to_global_generator_parameters))
+
+        self._global_generator = global_generator.model
+
+        residual_blocks = []
+
+        for _ in range(num_resnet_blocks_enhancer):
+            residual_blocks += ResNetBlock(64, norm_layer)
+
+        self._residual_blocks = nn.Sequential(*residual_blocks)
+
+        self._back_end = nn.Sequential(nn.ConvTranspose2d(64, 32, kernel_size=3, stride=2,
+                                                          padding=1, output_padding=1),
+                                       norm_layer(affine=False),
+                                       nn.ReLU(inplace=True),
+                                       nn.ReflectionPad2d(3),
+                                       nn.Conv2d(32, out_channels, kernel_size=7, padding=0),
+                                       nn.Tanh()
+                                       )
+        initialize_weights(self._back_end)
+
+        self._downsampling = nn.AvgPool2d(3, stride=2, padding=[1, 1], count_include_pad=False)
+
+    def forward(self, x):
+        downsampled_input = self._downsampling(x)
+
+        global_generator_output = self._global_generator.forward(downsampled_input)
+        front_end_output = self._front_end.forward(x)
+
+        residual_blocks_output = self._residual_blocks.forward(global_generator_output + front_end_output)
+
+        return self._back_end.forward(residual_blocks_output)
