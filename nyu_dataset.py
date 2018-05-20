@@ -8,7 +8,7 @@ import glob
 
 
 class SegmentationTransform(object):
-    def __init__(self, train_trainsforms=True, num_classes=40):
+    def __init__(self, train_trainsforms=True, num_classes=41):
         self.train_trainsforms = train_trainsforms
         self.to_tensor = transforms.ToTensor()
         if train_trainsforms:
@@ -41,7 +41,7 @@ class SegmentationTransform(object):
 
         image_tensor = self.to_tensor(image)
         image_tensor = transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))(image_tensor)
-        segmentation_tensor = (np.arange(self.num_classes) == segmentation[..., None] - 1).astype(int)
+        segmentation_tensor = (np.arange(self.num_classes) == segmentation[..., None]).astype(int)
         segmentation_tensor = np.rollaxis(segmentation_tensor, -1, 0)
         segmentation_tensor = torch.FloatTensor(segmentation_tensor)
         return image_tensor, segmentation_tensor
