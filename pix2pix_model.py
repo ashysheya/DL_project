@@ -6,7 +6,8 @@ class DownModule(nn.Module):
     """
     Class for downsample module of the generator.
     """
-    def __init__(self, in_channels, out_channels, batch_norm=True, stride=2, relu=True, instance_norm=False):
+    def __init__(self, in_channels, out_channels, batch_norm=True, stride=2,
+                 relu=True, instance_norm=False):
         """
         Initialize down module and modules weights
         :param in_channels: number of input channels
@@ -46,10 +47,11 @@ class UpModule(nn.Module):
     """
     Class for upsampling module in the generator.
     """
-    def __init__(self, in_channels, out_channels, dropout=True, batch_norm=True, relu=True, instance_norm=False):
+    def __init__(self, in_channels, out_channels, dropout=True, batch_norm=True,
+                 relu=True, instance_norm=False, stride=2):
         super(UpModule, self).__init__()
         modules = [nn.ConvTranspose2d(in_channels=in_channels, out_channels=out_channels,
-                                      kernel_size=4, stride=2, padding=1, bias=False)]
+                                      kernel_size=4, stride=stride, padding=1, bias=False)]
         if batch_norm:
             modules.append(nn.BatchNorm2d(num_features=out_channels))
         if instance_norm:
@@ -143,14 +145,17 @@ class Generator(nn.Module):
                                                                 list_in_channels_decoder,
                                                                 list_out_channels_decoder):
             if i < 3:
-                up_modules.append(UpModule(current_in_channels, current_out_channels, batch_norm=batch_norm, 
+                up_modules.append(UpModule(current_in_channels, current_out_channels,
+                                           batch_norm=batch_norm,
                                            instance_norm=instance_norm))
             elif i == depth - 1:
                 up_modules.append(UpModule(current_in_channels, current_out_channels,
-                                           dropout=False, batch_norm=False, relu=False, instance_norm=False))
+                                           dropout=False, batch_norm=False, relu=False,
+                                           instance_norm=False))
             else:
                 up_modules.append(UpModule(current_in_channels, current_out_channels,
-                                           dropout=False, batch_norm=batch_norm, instance_norm=instance_norm))
+                                           dropout=False, batch_norm=batch_norm,
+                                           instance_norm=instance_norm))
 
         self._up_modules = ListModule(*up_modules)
 
@@ -175,8 +180,10 @@ class Discriminator(nn.Module):
     Discriminator class for pix2pix model
     70x70 discriminator is used.
     """
-    def __init__(self, in_channels, instance_norm=False):
+    def __init__(self, in_channels, instance_norm=False, get_all_features=False):
         super(Discriminator, self).__init__()
+
+        self._get_all_features = get_all_features
 
         list_in_channels = [in_channels, 64, 128, 256, 512]
         list_out_channels = [64, 128, 256, 512, 1]
@@ -191,20 +198,31 @@ class Discriminator(nn.Module):
 
         for i, in_channels, out_channels in zip(range(depth), list_in_channels, list_out_channels):
             if i == 0:
-                modules.append(DownModule(in_channels, out_channels, batch_norm=False, instance_norm=False))
+                modules.append(DownModule(in_channels, out_channels, batch_norm=False,
+                                          instance_norm=False))
 
             elif i < depth - 2:
-                modules.append(DownModule(in_channels, out_channels, batch_norm=batch_norm, instance_norm=instance_norm))
+                modules.append(DownModule(in_channels, out_channels, batch_norm=batch_norm,
+                                          instance_norm=instance_norm))
 
             elif i == depth - 2:
-                modules.append(DownModule(in_channels, out_channels, stride=1, batch_norm=batch_norm, 
-                                          instance_norm=instance_norm))
+                modules.append(DownModule(in_channels, out_channels, stride=1,
+                                          batch_norm=batch_norm, instance_norm=instance_norm))
 
             else:
                 modules.append(DownModule(in_channels, out_channels, stride=1, batch_norm=False,
                                           relu=False, instance_norm=False))
 
-        self._net = nn.Sequential(*modules)
+        if get_all_features:
+            self._net = ListModule(*modules)
+        else:
+            self._net = nn.Sequential(*modules)
 
     def forward(self, x):
-        return self._net.forward(x)
+        if not self._get_all_features:
+            return self._net.forward(x)
+        else:
+            outputs = [x]
+            for module in self._net:
+                outputs.append(module.forward(outputs[-1]))
+            return outputs[1:]
