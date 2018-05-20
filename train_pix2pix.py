@@ -23,7 +23,7 @@ import nyu_dataset
 import pix2pix_model
 import tqdm
 
-num_classes = 40
+num_classes = 41
 
 segmentation_dataset_train = nyu_dataset.SegmentationDataset(transforms=nyu_dataset.SegmentationTransform())
 data_loader_train = DataLoader(segmentation_dataset_train, batch_size=1, shuffle=True, num_workers=1)
@@ -107,8 +107,8 @@ def train(data_loader_train, data_loader_val, generator, discriminator, num_iter
                 break
         
         if epoch % save_each_epoch == 0:
-            torch.save(generator.state_dict(), './models/generator_{}'.format(epoch))
-            torch.save(discriminator.state_dict(), './models/discriminator_{}'.format(epoch))
+            torch.save(generator.state_dict(), './models/generator_{}_{}'.format(epoch, 0))
+            torch.save(discriminator.state_dict(), './models/discriminator_{}_{}'.format(epoch, 0))
         
         if epoch > num_iter:
             lr_decay = learning_rate/num_iter_decay
@@ -120,7 +120,7 @@ def train(data_loader_train, data_loader_val, generator, discriminator, num_iter
 
     return generator_loss_history, discriminator_loss_history
 
-g_loss, d_loss = train(data_loader_train, data_loader_val, generator, discriminator)
+g_loss, d_loss = train(data_loader_train, data_loader_val, generator, discriminator, lambda_param=0.0)
 
 np.save('generator_loss', g_loss)
 np.save('discriminator_loss', d_loss)
