@@ -7,7 +7,7 @@ class DownModule(nn.Module):
     Class for downsample module of the generator.
     """
     def __init__(self, in_channels, out_channels, batch_norm=True, stride=2,
-                 relu=True, instance_norm=False):
+                 relu=True, instance_norm=False, sigmoid=False, bias=False):
         """
         Initialize down module and modules weights
         :param in_channels: number of input channels
@@ -15,17 +15,21 @@ class DownModule(nn.Module):
         :param batch_norm: whether to use batchnorm
         """
         super(DownModule, self).__init__()
-        modules = [nn.Conv2d(in_channels=in_channels, out_channels=out_channels,
-                             kernel_size=4, stride=stride, padding=1, bias=False)]
+
+        if relu:
+            modules = [nn.LeakyReLU(negative_slope=0.2, inplace=True)]
+        else:
+            modules = []
+
+        modules += [nn.Conv2d(in_channels=in_channels, out_channels=out_channels,
+                              kernel_size=4, stride=stride, padding=1, bias=bias)]
         if batch_norm:
             modules.append(nn.BatchNorm2d(num_features=out_channels))
             
         if instance_norm:
             modules.append(nn.InstanceNorm2d(num_features=out_channels, affine=False))
 
-        if relu:
-            modules.append(nn.LeakyReLU(negative_slope=0.2, inplace=True))
-        else:
+        if sigmoid:
             modules.append(nn.Sigmoid())
 
         self.net = nn.Sequential(*modules)
@@ -33,16 +37,16 @@ class DownModule(nn.Module):
         # weights initialization
         for module in self.net.modules():
             if isinstance(module, nn.Conv2d):
-                module.weight.data.normal_(0.0, 0.02)
+                module.weight.data.normal_(0.0, 0.2)
+                if module.bias is not None:
+                    module.bias.data.fill_(0.0)
 
             elif isinstance(module, nn.BatchNorm2d):
-                module.weight.data.normal_(1.0, 0.02)
-                module.bias.data.fill_(0)
+                module.weight.data.normal_(1.0, 0.2)
+                module.bias.data.fill_(0.0)
 
     def forward(self, x):
         return self.net.forward(x)
-
-
 
 
 class UpModule(nn.Module):
@@ -50,20 +54,21 @@ class UpModule(nn.Module):
     Class for upsampling module in the generator.
     """
     def __init__(self, in_channels, out_channels, dropout=True, batch_norm=True,
-                 relu=True, instance_norm=False, stride=2):
+                 relu=True, instance_norm=False, stride=2, tanh=False, bias=False):
         super(UpModule, self).__init__()
-        modules = [nn.ConvTranspose2d(in_channels=in_channels, out_channels=out_channels,
-                                      kernel_size=4, stride=stride, padding=1, bias=False)]
+        if relu:
+            modules = [nn.ReLU(inplace=True)]
+        else:
+            modules = []
+        modules += [nn.ConvTranspose2d(in_channels=in_channels, out_channels=out_channels,
+                                       kernel_size=4, stride=stride, padding=1, bias=bias)]
         if batch_norm:
             modules.append(nn.BatchNorm2d(num_features=out_channels))
         if instance_norm:
             modules.append(nn.InstanceNorm2d(num_features=out_channels, affine=False))
         if dropout:
-            modules.append(nn.Dropout2d(p=0.5, inplace=True))
-
-        if relu:
-            modules.append(nn.ReLU(inplace=True))
-        else:
+            modules.append(nn.Dropout(p=0.5))
+        if tanh:
             modules.append(nn.Tanh())
 
         self.net = nn.Sequential(*modules)
@@ -71,9 +76,11 @@ class UpModule(nn.Module):
         # weight initialization
         for module in self.net.modules():
             if isinstance(module, nn.ConvTranspose2d):
-                module.weight.data.normal_(0.0, 0.02)
+                module.weight.data.normal_(0.0, 0.2)
+                if module.bias is not None:
+                    module.bias.data.fill_(0.0)
             elif isinstance(module, nn.BatchNorm2d):
-                module.weight.data.normal_(1.0, 0.02)
+                module.weight.data.normal_(1.0, 0.2)
                 module.bias.data.fill_(0)
 
     def forward(self, x):
@@ -130,12 +137,18 @@ class Generator(nn.Module):
         for i, current_in_channels, current_out_channels in zip(range(depth),
                                                                 list_in_channels_encoder,
                                                                 list_out_channels_encoder):
-            if i == 0 or i == depth - 1:
+            if i == 0:
                 down_modules.append(DownModule(current_in_channels, current_out_channels,
-                                               batch_norm=False, instance_norm=False))
+                                               batch_norm=False, instance_norm=False,
+                                               relu=False, sigmoid=False))
+            elif i == depth - 1:
+                down_modules.append(DownModule(current_in_channels, current_out_channels,
+                                               batch_norm=False, instance_norm=False,
+                                               relu=True, sigmoid=False))
             else:
                 down_modules.append(DownModule(current_in_channels, current_out_channels, 
-                                               batch_norm=batch_norm, instance_norm=instance_norm))
+                                               batch_norm=batch_norm, instance_norm=instance_norm,
+                                               relu=True, sigmoid=False))
 
         self._down_modules = ListModule(*down_modules)
 
@@ -146,14 +159,19 @@ class Generator(nn.Module):
         for i, current_in_channels, current_out_channels in zip(range(depth),
                                                                 list_in_channels_decoder,
                                                                 list_out_channels_decoder):
-            if i < 3:
+
+            if i == 0:
+                up_modules.append(UpModule(current_in_channels, current_out_channels,
+                                           batch_norm=batch_norm, instance_norm=instance_norm,
+                                           dropout=False))
+            elif i <= 3:
                 up_modules.append(UpModule(current_in_channels, current_out_channels,
                                            batch_norm=batch_norm,
                                            instance_norm=instance_norm))
             elif i == depth - 1:
                 up_modules.append(UpModule(current_in_channels, current_out_channels,
-                                           dropout=False, batch_norm=False, relu=False,
-                                           instance_norm=False))
+                                           dropout=False, batch_norm=False, relu=True,
+                                           tanh=True, instance_norm=False, bias=True))
             else:
                 up_modules.append(UpModule(current_in_channels, current_out_channels,
                                            dropout=False, batch_norm=batch_norm,
@@ -201,7 +219,8 @@ class Discriminator(nn.Module):
         for i, in_channels, out_channels in zip(range(depth), list_in_channels, list_out_channels):
             if i == 0:
                 modules.append(DownModule(in_channels, out_channels, batch_norm=False,
-                                          instance_norm=False))
+                                          instance_norm=False, bias=True, relu=False,
+                                          sigmoid=False))
 
             elif i < depth - 2:
                 modules.append(DownModule(in_channels, out_channels, batch_norm=batch_norm,
@@ -213,7 +232,8 @@ class Discriminator(nn.Module):
 
             else:
                 modules.append(DownModule(in_channels, out_channels, stride=1, batch_norm=False,
-                                          relu=False, instance_norm=False))
+                                          relu=True, instance_norm=False, sigmoid=True,
+                                          bias=True))
 
         if get_all_features:
             self._net = ListModule(*modules)
