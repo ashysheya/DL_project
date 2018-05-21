@@ -8,7 +8,7 @@ import glob
 
 
 class SegmentationTransform(object):
-    def __init__(self, train_trainsforms=True, num_classes=41):
+    def __init__(self, train_trainsforms=True, num_classes=41, use_rgb=False, path_to_rgb=None):
         self.train_trainsforms = train_trainsforms
         self.to_tensor = transforms.ToTensor()
         if train_trainsforms:
@@ -16,6 +16,10 @@ class SegmentationTransform(object):
         else:
             self.resize = transforms.Resize(size=(256, 256))
         self.num_classes = num_classes
+
+        self.use_rgb = use_rgb
+        if use_rgb:
+            self.colors = np.load(path_to_rgb)
 
     def __call__(self, image, segmentation):
 
@@ -41,8 +45,16 @@ class SegmentationTransform(object):
 
         image_tensor = self.to_tensor(image)
         image_tensor = transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))(image_tensor)
-        segmentation_tensor = (np.arange(self.num_classes) == segmentation[..., None]).astype(int)
-        segmentation_tensor = np.rollaxis(segmentation_tensor, -1, 0)
+        if self.use_rgb:
+            segmentation_tensor = self.colors[segmentation]
+            print(segmentation_tensor.shape)
+            segmentation_tensor = self.to_tensor(segmentation_tensor)
+            segmentation_tensor = transforms.Normalize((0.5, 0.5, 0.5),
+                                                       (0.5, 0.5, 0.5))(segmentation_tensor)
+        else:
+            segmentation_tensor = (np.arange(self.num_classes) == segmentation[..., None]).astype(int)
+            segmentation_tensor = np.rollaxis(segmentation_tensor, -1, 0)
+
         segmentation_tensor = torch.FloatTensor(segmentation_tensor)
         return image_tensor, segmentation_tensor
 
