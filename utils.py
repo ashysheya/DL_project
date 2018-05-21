@@ -20,3 +20,9 @@ def preprocess_nyu_dataset(path_to_data='./nyu_depth_v2_labeled.mat',
         else:
             scipy.misc.imsave('{}val/image/{:04}.png'.format(path_save_data, idx), np.transpose(image))
             scipy.misc.imsave('{}val/segm/{:04}.png'.format(path_save_data, idx), np.transpose(segmentation))
+
+
+def define_random_segmentation_color(path_save_data='./datasets/nyu/', num_classes=41):
+    np.random.seed(42)
+    colors = np.random.randint(0, 256, (num_classes, 3))
+    np.save('{}colors.npy'.format(path_save_data), colors)
