@@ -189,8 +189,7 @@ class Generator(nn.Module):
         for i, module in enumerate(self._up_modules):
             idx_current_input = len(self._up_modules) - i - 1
             if i > 0:
-                current_input = torch.cat((current_input, outputs[idx_current_input]), 1)
-
+                current_input = torch.cat((outputs[idx_current_input], current_input), 1)
             current_input = module.forward(current_input)
         return current_input
 
