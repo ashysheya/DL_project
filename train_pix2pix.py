@@ -19,8 +19,8 @@ segmentation_dataset_validation = nyu_dataset.SegmentationDataset(path_to_datafo
                                                                   nyu_dataset.SegmentationTransform(False))
 data_loader_val = DataLoader(segmentation_dataset_validation, batch_size=1, shuffle=False, num_workers=1)
 
-generator = pix2pix_model.Generator(num_classes, 3, instance_norm=True).cuda(0)
-discriminator = pix2pix_model.Discriminator(num_classes + 3, instance_norm=True).cuda(0)
+generator = pix2pix_model.Generator(num_classes, 3, instance_norm=False).cuda(0)
+discriminator = pix2pix_model.Discriminator(num_classes + 3, instance_norm=False).cuda(0)
 
 def train(data_loader_train, data_loader_val, generator, discriminator, num_iter=100, num_iter_decay=100, 
           lambda_param=100.0, save_each_epoch=10, learning_rate=0.0002):
@@ -93,8 +93,8 @@ def train(data_loader_train, data_loader_val, generator, discriminator, num_iter
                 break
         
         if epoch % save_each_epoch == 0:
-            torch.save(generator.state_dict(), './models/generator_{}_{}'.format(epoch, 0))
-            torch.save(discriminator.state_dict(), './models/discriminator_{}_{}'.format(epoch, 0))
+            torch.save(generator.state_dict(), './models/generator_{}'.format(epoch))
+            torch.save(discriminator.state_dict(), './models/discriminator_{}'.format(epoch))
         
         if epoch > num_iter:
             lr_decay = learning_rate/num_iter_decay
@@ -106,7 +106,7 @@ def train(data_loader_train, data_loader_val, generator, discriminator, num_iter
 
     return generator_loss_history, discriminator_loss_history
 
-g_loss, d_loss = train(data_loader_train, data_loader_val, generator, discriminator, lambda_param=0.0)
+g_loss, d_loss = train(data_loader_train, data_loader_val, generator, discriminator, lambda_param=100.0)
 
 np.save('generator_loss', g_loss)
 np.save('discriminator_loss', d_loss)

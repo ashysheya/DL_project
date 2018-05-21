@@ -47,7 +47,6 @@ class SegmentationTransform(object):
         image_tensor = transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))(image_tensor)
         if self.use_rgb:
             segmentation_tensor = self.colors[segmentation]
-            print(segmentation_tensor.shape)
             segmentation_tensor = self.to_tensor(segmentation_tensor)
             segmentation_tensor = transforms.Normalize((0.5, 0.5, 0.5),
                                                        (0.5, 0.5, 0.5))(segmentation_tensor)
