@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from pix2pix_model import Discriminator, ListModule
+from pix2pix_model import ListModule
 import numpy as np
 
 
@@ -8,6 +8,8 @@ def initialize_weights(network):
     for module in network.modules():
         if isinstance(module, nn.Conv2d):
             module.weight.data.normal_(0.0, 0.02)
+            if module.bias is not None:
+                    module.bias.data.fill_(0.0)
 
         elif isinstance(module, nn.BatchNorm2d):
             module.weight.data.normal_(1.0, 0.02)
@@ -15,6 +17,90 @@ def initialize_weights(network):
 
         elif isinstance(module, nn.ConvTranspose2d):
             module.weight.data.normal_(0.0, 0.02)
+            if module.bias is not None:
+                    module.bias.data.fill_(0.0)
+                    
+                    
+class Discriminator(nn.Module):
+    """
+    Discriminator class for pix2pixHD model
+    70x70 discriminator is used.
+    """
+    def __init__(self, in_channels, instance_norm=True, get_all_features=False,
+                 sigmoid=True):
+        super(Discriminator, self).__init__()
+
+        self._get_all_features = get_all_features
+
+        list_in_channels = [in_channels, 64, 128, 256, 512]
+        list_out_channels = [64, 128, 256, 512, 1]
+        depth = len(list_out_channels)
+        
+        if instance_norm:
+            norm_layer = nn.InstanceNorm2d
+        else:
+            norm_layer = nn.BatchNorm2d
+
+        modules = []
+
+        for i, in_channels, out_channels in zip(range(depth), list_in_channels, list_out_channels):
+            if i == 0:
+                modules.append(nn.Sequential(nn.Conv2d(in_channels=in_channels,
+                                                       out_channels=out_channels,
+                                                       kernel_size=4,
+                                                       stride=2,
+                                                       padding=2),
+                                             nn.LeakyReLU(negative_slope=0.2, inplace=True)))
+
+            elif i < depth - 2:
+                modules.append(nn.Sequential(nn.Conv2d(in_channels=in_channels,
+                                                       out_channels=out_channels,
+                                                       kernel_size=4,
+                                                       stride=2,
+                                                       padding=2),
+                                             norm_layer(out_channels, affine=False),
+                                             nn.LeakyReLU(negative_slope=0.2, inplace=True)))
+
+            elif i == depth - 2:
+                modules.append(nn.Sequential(nn.Conv2d(in_channels=in_channels,
+                                                       out_channels=out_channels,
+                                                       kernel_size=4,
+                                                       stride=1,
+                                                       padding=2),
+                                             norm_layer(out_channels, affine=False),
+                                             nn.LeakyReLU(negative_slope=0.2, inplace=True)))
+
+            else:
+                if sigmoid:
+                    modules.append(nn.Sequential(nn.Conv2d(in_channels=in_channels,
+                                                           out_channels=out_channels,
+                                                           kernel_size=4,
+                                                           stride=1,
+                                                           padding=2),
+                                                 nn.Sigmoid()))
+                else:
+                    modules.append(nn.Sequential(nn.Conv2d(in_channels=in_channels,
+                                                           out_channels=out_channels,
+                                                           kernel_size=4,
+                                                           stride=1,
+                                                           padding=2)))
+
+        for module in modules:
+            initialize_weights(module)
+
+        if get_all_features:
+            self._net = ListModule(*modules)
+        else:
+            self._net = nn.Sequential(*modules)
+
+    def forward(self, x):
+        if not self._get_all_features:
+            return self._net.forward(x)
+        else:
+            outputs = [x]
+            for module in self._net:
+                outputs.append(module.forward(outputs[-1]))
+            return outputs[1:]
 
 
 class MultiScaleDiscriminator(nn.Module):
@@ -55,7 +141,7 @@ class FeatureEncoder(nn.Module):
     """
     Class for extracting instance-wise feature vectors.
     """
-    def __init__(self, in_channels, out_channels, instance_norm=False):
+    def __init__(self, in_channels, out_channels, instance_norm=True):
         super(FeatureEncoder, self).__init__()
         self._out_channels = out_channels
 
@@ -64,7 +150,7 @@ class FeatureEncoder(nn.Module):
         else:
             norm_layer = nn.BatchNorm2d
         
-        list_in_channels = [in_channels, 32, 64, 128, 256, 128, 64, 32]
+        list_in_channels = [in_channels, 16, 32, 64, 128, 256, 128, 64, 32, 16]
         list_out_channels = list_in_channels[1:] + [out_channels]
         depth = len(list_out_channels)
         
@@ -81,10 +167,11 @@ class FeatureEncoder(nn.Module):
                 modules += [nn.Conv2d(in_ch, out_ch, kernel_size=3, stride=2, padding=1),
                             norm_layer(out_ch, affine=False), nn.ReLU(True)]
             elif in_ch > out_ch:
-                modules += [nn.ConvTranspose2d(in_ch, out_ch, kernel_size=3, stride=2, padding=1),
+                modules += [nn.ConvTranspose2d(in_ch, out_ch, kernel_size=3, stride=2, padding=1, output_padding=1),
                             norm_layer(out_ch, affine=False), nn.ReLU(True)]
 
         self._net = nn.Sequential(*modules)
+        initialize_weights(self._net)
         
     def forward(self, input, inst):
         outputs = self._net.forward(input)
@@ -138,10 +225,10 @@ class GlobalGenerator(nn.Module):
             norm_layer = nn.BatchNorm2d
 
         # convolutional front-end
-        front_end = nn.Sequential(nn.ReflectionPad2d(3),
-                                  nn.Conv2d(in_channels, 64, kernel_size=7, stride=1, padding=0),
-                                  norm_layer(64, affine=False),
-                                  nn.ReLU(inplace=True))
+        front_end = [nn.ReflectionPad2d(3),
+                     nn.Conv2d(in_channels, 64, kernel_size=7, stride=1, padding=0),
+                     norm_layer(64, affine=False),
+                     nn.ReLU(inplace=True)]
 
 
         # downsampling layers
@@ -176,7 +263,7 @@ class GlobalGenerator(nn.Module):
                                               out_channels_upsampling):
             upsampling += [nn.ConvTranspose2d(in_channel, out_channel, kernel_size=3, stride=2,
                                               padding=1, output_padding=1),
-                           norm_layer(affine=False),
+                           norm_layer(out_channel, affine=False),
                            nn.ReLU(inplace=True),
                            ]
 
@@ -230,13 +317,13 @@ class LocalEnhancer(nn.Module):
         residual_blocks = []
 
         for _ in range(num_resnet_blocks_enhancer):
-            residual_blocks += ResNetBlock(64, norm_layer)
+            residual_blocks += [ResNetBlock(64, norm_layer)]
 
         self._residual_blocks = nn.Sequential(*residual_blocks)
 
         self._back_end = nn.Sequential(nn.ConvTranspose2d(64, 32, kernel_size=3, stride=2,
                                                           padding=1, output_padding=1),
-                                       norm_layer(affine=False),
+                                       norm_layer(32, affine=False),
                                        nn.ReLU(inplace=True),
                                        nn.ReflectionPad2d(3),
                                        nn.Conv2d(32, out_channels, kernel_size=7, padding=0),
