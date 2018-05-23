@@ -37,12 +37,12 @@ class DownModule(nn.Module):
         # weights initialization
         for module in self.net.modules():
             if isinstance(module, nn.Conv2d):
-                module.weight.data.normal_(0.0, 0.2)
+                module.weight.data.normal_(0.0, 0.02)
                 if module.bias is not None:
                     module.bias.data.fill_(0.0)
 
             elif isinstance(module, nn.BatchNorm2d):
-                module.weight.data.normal_(1.0, 0.2)
+                module.weight.data.normal_(1.0, 0.02)
                 module.bias.data.fill_(0.0)
 
     def forward(self, x):
@@ -76,11 +76,11 @@ class UpModule(nn.Module):
         # weight initialization
         for module in self.net.modules():
             if isinstance(module, nn.ConvTranspose2d):
-                module.weight.data.normal_(0.0, 0.2)
+                module.weight.data.normal_(0.0, 0.02)
                 if module.bias is not None:
                     module.bias.data.fill_(0.0)
             elif isinstance(module, nn.BatchNorm2d):
-                module.weight.data.normal_(1.0, 0.2)
+                module.weight.data.normal_(1.0, 0.02)
                 module.bias.data.fill_(0)
 
     def forward(self, x):
