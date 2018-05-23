@@ -51,12 +51,12 @@ def train(data_loader_train, data_loader_val, generator, discriminator, num_iter
             predictions_fake = discriminator.forward(fake_input_discriminator.detach())
             predictions_real = discriminator.forward(real_input_discriminator)
             
-            target_tensor = Variable(torch.ones(predictions_fake.shape).cuda(0), requires_grad=False)
+            target_tensor_true_label = Variable(torch.ones(predictions_fake.shape).cuda(0), requires_grad=False)
             
-            loss_discriminator_real = GANLoss(predictions_real, target_tensor)
+            loss_discriminator_real = GANLoss(predictions_real, target_tensor_true_label)
             
-            target_tensor.data.fill_(0)
-            loss_discriminator_fake = GANLoss(predictions_fake, target_tensor)
+            target_tensor_fake_label = Variable(torch.zeros(predictions_fake.shape).cuda(0), requires_grad=False)
+            loss_discriminator_fake = GANLoss(predictions_fake, target_tensor_fake_label)
             
             loss_discriminator = (loss_discriminator_fake + loss_discriminator_real)*0.5
             loss_discriminator.backward()
@@ -70,8 +70,7 @@ def train(data_loader_train, data_loader_val, generator, discriminator, num_iter
             fake_input_discriminator = torch.cat((segmentation_batch, fake_image_batch), 1)         
             predictions_fake = discriminator.forward(fake_input_discriminator)
             
-            target_tensor.data.fill_(1)
-            loss_generator_gan = GANLoss(predictions_fake, target_tensor)
+            loss_generator_gan = GANLoss(predictions_fake, target_tensor_true_label)
             
             loss_generator_L1 = L1Loss(fake_image_batch, image_batch)*lambda_param
             
