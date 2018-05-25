@@ -12,17 +12,29 @@ def preprocess_nyu_dataset(path_to_data='./nyu_depth_v2_labeled.mat',
     idx_to_mapping_index[0] = 0
     mapping_func = np.vectorize(lambda element: idx_to_mapping_index[element])
     data = h5py.File(path_to_data)
-    for idx, image, segmentation in zip(range(len(data['images'])), data['images'], data['labels']):
+    for idx, image, segmentation, instance in zip(range(len(data['images'])), data['images'], 
+                                                  data['labels'], data['instances']):
         segmentation = mapping_func(segmentation).astype('uint8')
         if idx < 1200:
             scipy.misc.imsave('{}train/image/{:04}.png'.format(path_save_data, idx), np.transpose(image))
             scipy.misc.imsave('{}train/segm/{:04}.png'.format(path_save_data, idx), np.transpose(segmentation))
+            scipy.misc.imsave('{}train/instance/{:04}.png'.format(path_save_data, idx), np.transpose(instance))
         else:
             scipy.misc.imsave('{}val/image/{:04}.png'.format(path_save_data, idx), np.transpose(image))
             scipy.misc.imsave('{}val/segm/{:04}.png'.format(path_save_data, idx), np.transpose(segmentation))
+            scipy.misc.imsave('{}val/instance/{:04}.png'.format(path_save_data, idx), np.transpose(instance))
 
 
 def define_random_segmentation_color(path_save_data='./datasets/nyu/', num_classes=41):
     np.random.seed(42)
     colors = np.random.randint(0, 256, (num_classes, 3))
     np.save('{}colors.npy'.format(path_save_data), colors)
+    
+def get_borders(instance_segmentation):
+    borders = np.zeros_like(instance_segmentation)
+    borders[:, 1:] = instance_segmentation[:, 1:] != instance_segmentation[:, :-1]
+    borders[:, :-1] += instance_segmentation[:, 1:] != instance_segmentation[:, :-1]
+    borders[1:, :] += instance_segmentation[1:, :] != instance_segmentation[:-1, :]
+    borders[:-1, :] += instance_segmentation[1:, :] != instance_segmentation[:-1, :]
+    borders[borders > 0] = 1.0
+    return borders
