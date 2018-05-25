@@ -124,25 +124,23 @@ def train(data_loader_train, data_loader_val, generator, discriminator, encoder,
         return generator_loss_history, discriminator_loss_history
 
 if __name__ == "__main__": 
-    num_classes = 3
+    num_classes = 41
 
     segmentation_dataset_train = nyu_dataset.SegmentationDataset(
-        transforms=nyu_dataset.SegmentationTransform())
-    data_loader_train = DataLoader(segmentation_dataset_train, batch_size=1, shuffle=True,
-                                   num_workers=1)
+        transforms=nyu_dataset.SegmentationTransform(resize=False), 
+        use_instance_segmentation=True)
+    data_loader_train = DataLoader(segmentation_dataset_train, batch_size=1, shuffle=True, num_workers=1)
 
-    segmentation_dataset_validation = nyu_dataset.SegmentationDataset(
-        path_to_datafolder='./datasets/nyu/val/',
-        transforms=
-        nyu_dataset.SegmentationTransform(False))
-    data_loader_val = DataLoader(segmentation_dataset_validation, batch_size=1, shuffle=False,
-                                 num_workers=1)
+    segmentation_dataset_validation = nyu_dataset.SegmentationDataset(path_to_datafolder='./datasets/nyu/val/', 
+        transforms=nyu_dataset.SegmentationTransform(train_trainsforms=False, resize=False), 
+        use_instance_segmentation=True)
+    data_loader_val = DataLoader(segmentation_dataset_validation, batch_size=1, shuffle=False, num_workers=1)
 
     _cuda = 2
 
-    encoder = pix2pixHD_model.FeatureEncoder(num_classes, 3, instance_norm=True).cuda(_cuda)
+    encoder = pix2pixHD_model.FeatureEncoder(3, 3, instance_norm=True).cuda(_cuda)
     generator = pix2pixHD_model.GlobalGenerator(num_classes + 3 + 1, 3, instance_norm=True).cuda(_cuda)
-    discriminator = pix2pixHD_model.MultiScaleDiscriminator(num_classes + 3, instance_norm=True).cuda(_cuda)
+    discriminator = pix2pixHD_model.MultiScaleDiscriminator(num_classes + 3 + 1, instance_norm=True).cuda(_cuda)
     
 
     g_loss, d_loss = train(data_loader_train, data_loader_val, generator, discriminator, encoder)
