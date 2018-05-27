@@ -175,17 +175,17 @@ class FeatureEncoder(nn.Module):
         
     def forward(self, input, inst):
         outputs = self._net.forward(input)
-        
         outputs_mean = outputs.clone()
         inst_list = np.unique(inst.cpu().numpy().astype(int))
         for i in inst_list:
-            indices = (inst == i).nonzero() 
+            indices = (inst == int(i)).nonzero() 
             for j in range(self._out_channels):
                 output_inst = outputs[indices[:, 0], indices[:, 1] + j, indices[:, 2],
                                       indices[:, 3]]
                 mean_features = torch.mean(output_inst).expand_as(output_inst)
                 outputs_mean[indices[:, 0], indices[:, 1] + j,
                              indices[:, 2], indices[:, 3]] = mean_features
+        
         return outputs_mean
 
 
@@ -217,7 +217,7 @@ class GlobalGenerator(nn.Module):
     Global Generator from pix2pixHD
     """
 
-    def __init__(self, in_channels, out_channels, instance_norm=True, num_residual_blocks=9):
+    def __init__(self, in_channels, out_channels, instance_norm=True, num_residual_blocks=5):
         super(GlobalGenerator, self).__init__()
         if instance_norm:
             norm_layer = nn.InstanceNorm2d

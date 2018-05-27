@@ -37,7 +37,7 @@ def train(data_loader_train, data_loader_val, generator, discriminator, encoder,
                 segmentation_batch = Variable(segmentation_batch.cuda(_cuda), requires_grad=False)
                 border_batch = Variable(border_batch.cuda(_cuda), requires_grad=False)
 
-                encoded = encoder.forward(image_batch, inst_batch)
+                encoded = encoder.forward(image_batch, inst_batch.cuda(_cuda))
                 input_generator = torch.cat((segmentation_batch, encoded, border_batch), 1)
                 fake_image_batch = generator.forward(input_generator)
 
@@ -89,10 +89,11 @@ def train(data_loader_train, data_loader_val, generator, discriminator, encoder,
                 e_optimizer.step()
 
             num_val_image = 0
-            for image, segmentation, inst, borders  in data_loader_val:                
+            for image, segmentation, inst, borders  in data_loader_val:     
+                image = Variable(image.cuda(_cuda), requires_grad=False, volatile=True)
                 segmentation = Variable(segmentation.cuda(_cuda), requires_grad=False, volatile=True)
                 borders = Variable(borders.cuda(_cuda), requires_grad=False, volatile=True)
-                encoded_val = encoder.forward(image, inst)
+                encoded_val = encoder.forward(image, inst.cuda(_cuda))
                 
                 input_generator = torch.cat((segmentation, encoded_val, borders), 1)
                 generated_image = generator.forward(input_generator)
